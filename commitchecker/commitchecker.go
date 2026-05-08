@@ -4,8 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/openshift/build-machinery-go/commitchecker/pkg/commitchecker"
+	"github.com/openshift/build-machinery-go/commitchecker/pkg/commitchecker/validatorloader"
+	"github.com/openshift/build-machinery-go/commitchecker/pkg/commitchecker/validatorruntime"
 	"github.com/openshift/build-machinery-go/commitchecker/pkg/version"
 )
 
@@ -55,14 +58,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	var validatorNames []string
+	var entries []string
 	if cliValidators := opts.ValidatorsList(); len(cliValidators) > 0 {
-		validatorNames = cliValidators
+		entries = cliValidators
 	} else if cfg != nil && len(cfg.Validators) > 0 {
-		validatorNames = cfg.Validators
+		entries = cfg.Validators
 	}
 
-	validators, err := commitchecker.ValidatorsForNames(validatorNames)
+	validators, err := resolveValidators(entries)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "ERROR: invalid validators: %v\n", err)
 		os.Exit(1)
@@ -91,4 +94,45 @@ func main() {
 	}
 
 	_, _ = fmt.Fprintf(os.Stdout, "Validation completed successfully\n")
+}
+
+func resolveValidators(entries []string) ([]commitchecker.Validator, error) {
+	if len(entries) == 0 {
+		return commitchecker.ValidatorsForNames(nil)
+	}
+
+	engine := validatorruntime.NewEngine()
+	var validators []commitchecker.Validator
+
+	for _, entry := range entries {
+		if validatorloader.IsDynamicSource(entry) {
+			src, err := validatorloader.Load(entry)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load validator %q: %w", entry, err)
+			}
+			name := validatorNameFromSource(entry)
+			v, err := engine.LoadValidator(name, src)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize validator %q: %w", entry, err)
+			}
+			validators = append(validators, v)
+		} else {
+			resolved, err := commitchecker.ValidatorsForNames([]string{entry})
+			if err != nil {
+				return nil, err
+			}
+			validators = append(validators, resolved...)
+		}
+	}
+
+	return validators, nil
+}
+
+func validatorNameFromSource(source string) string {
+	base := filepath.Base(source)
+	ext := filepath.Ext(base)
+	if ext != "" {
+		return base[:len(base)-len(ext)]
+	}
+	return base
 }
