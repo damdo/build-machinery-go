@@ -55,20 +55,40 @@ func main() {
 		os.Exit(1)
 	}
 
+	var validatorNames []string
+	if cliValidators := opts.ValidatorsList(); len(cliValidators) > 0 {
+		validatorNames = cliValidators
+	} else if cfg != nil && len(cfg.Validators) > 0 {
+		validatorNames = cfg.Validators
+	}
+
+	validators, err := commitchecker.ValidatorsForNames(validatorNames)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "ERROR: invalid validators: %v\n", err)
+		os.Exit(1)
+	}
+
 	_, _ = fmt.Fprintf(os.Stdout, "Validating %d commits between %s...%s\n", len(commits), start, opts.End)
-	var errs []string
+	var errs []error
 	for _, commit := range commits {
 		_, _ = fmt.Fprintf(os.Stdout, "Validating commit %+v\n", commit)
-		for _, validate := range commitchecker.AllCommitValidators {
-			errs = append(errs, validate(commit)...)
+		for _, v := range validators {
+			for _, e := range v.Validate(&commit) {
+				errs = append(errs, fmt.Errorf("FAILED: [%s] commit: %s, error: %q, title: %q", v.Name(), commit.Sha, e, commit.Summary))
+			}
 		}
 	}
 
 	if len(errs) > 0 {
+		_, _ = fmt.Fprintf(os.Stderr, "--------------------------------\n")
+		_, _ = fmt.Fprintf(os.Stderr, "Validation found %d issues:\n", len(errs))
+		_, _ = fmt.Fprintf(os.Stderr, "--------------------------------\n")
 		for _, e := range errs {
-			_, _ = fmt.Fprintf(os.Stderr, "%s\n\n", e)
+			_, _ = fmt.Fprintf(os.Stderr, "%s\n", e)
 		}
 
 		os.Exit(2)
 	}
+
+	_, _ = fmt.Fprintf(os.Stdout, "Validation completed successfully\n")
 }
