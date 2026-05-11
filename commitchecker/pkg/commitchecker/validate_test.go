@@ -23,6 +23,7 @@ func TestValidateCommitAuthor(t *testing.T) {
 		commit       *Commit
 		expectedMsgs []string
 	}{
+		// Rule 7: author requirements
 		{
 			name: "fails on root@locahost",
 			commit: &Commit{
@@ -34,6 +35,7 @@ func TestValidateCommitAuthor(t *testing.T) {
 				"Commit aaa0000 has invalid email \"root@localhost\"",
 			},
 		},
+		// Rule 7: valid author
 		{
 			name: "succeeds for deads2k@redhat.com",
 			commit: &Commit{
@@ -61,6 +63,7 @@ func TestValidateCommitMessage(t *testing.T) {
 		commit       *Commit
 		expectedMsgs []string
 	}{
+		// Rule 3.1: invalid summary
 		{
 			name: "modifying k8s without UPSTREAM commit fails",
 			commit: &Commit{
@@ -71,6 +74,16 @@ func TestValidateCommitMessage(t *testing.T) {
 				"invalid commit summary; expected format: UPSTREAM: <PR number|carry|drop>: description. More on this: https://github.com/openshift/build-machinery-go/blob/master/commitchecker/COMMITS.md",
 			},
 		},
+		// Rule 3.6: merge commits are exempt
+		{
+			name: "merge commit is exempt from message validation",
+			commit: &Commit{
+				Sha:     "aaa0000",
+				Summary: "Merge commit abc1234",
+			},
+			expectedMsgs: nil,
+		},
+		// Rule 3.2: valid base format
 		{
 			name: "modifying k8s with UPSTREAM commit succeeds",
 			commit: &Commit{
